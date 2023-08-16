@@ -1,0 +1,164 @@
+.globl _start
+
+.extern     hora_Init
+.extern     hora_Off
+.extern     Estadisticas
+
+
+@ Constantes
+.set Periodo, 1000
+
+@ Variables
+.data
+.align 2
+hora:		.byte  0
+minuto:		.byte  0
+segundo:	.byte  0
+dia:		.byte  0
+mes:		.byte  0
+.align  2
+ano:		.word  0
+
+caracter:	.byte  0, 0
+.align	2
+PruebasLCD:   .asciz "Inicio de las pruebas de la hora\r\n"
+Pide_hor:     .asciz "Indica la hora actual\r\n"
+Pide_min:     .asciz "Indica los minutos actuales\r\n"
+Pide_seg:     .asciz "Indica los segundos actuales\r\n"
+Pide_dia:     .asciz "Indica el dia actual\r\n"
+Pide_mes:     .asciz "Indica el mes actual\r\n"
+Pide_ano:     .asciz "Indica el año actual\r\n"
+Err_datos:    .asciz "Datos incorrectos, vuelve a intentarlo\r\n"
+FinLCD:       .asciz "Pruebas del modulo de horas completadas\r\n\n"
+
+
+@ Codigo
+.text
+
+_start:
+
+
+	ldr	R0,=PruebasLCD
+	swi 	0x02
+@ Pide la hora por consola
+        mov	R5, #0
+	ldr	R0,=Pide_hor
+	swi 	0x02
+
+	mov	R0, #0
+	mov	R1, #23
+	bl	Lee_Num
+
+	ldr	R1,=hora
+	strb	R0, [R1]
+
+	ldr	R0,=Pide_min
+	swi 	0x02
+
+	mov	R0, #0
+	mov	R1, #59
+	bl	Lee_Num
+
+	ldr	R1,=minuto
+	strb	R0, [R1]
+
+	ldr	R0,=Pide_seg
+	swi 	0x02
+
+	mov	R0, #0
+	mov	R1, #59
+	bl	Lee_Num
+
+	ldr	R1,=segundo
+	strb	R0, [R1]
+
+@ Pide la Fecha por consola
+        mov	R4, #0
+	ldr	R0,=Pide_dia
+	swi 	0x02
+
+	mov	R0, #1
+	mov	R1, #31
+	bl	Lee_Num
+
+	ldr	R1,=dia
+	strb	R0, [R1]
+
+	ldr	R0,=Pide_mes
+	swi 	0x02
+
+	mov	R0, #1
+	mov	R1, #12
+	bl	Lee_Num
+
+	ldr	R1,=mes
+	strb	R0, [R1]
+
+	ldr	R0,=Pide_ano
+	swi 	0x02
+
+	mov	R0, #0
+	mov	R1, #0x100000
+	bl	Lee_Num
+
+	ldr	R1,=ano
+	str	R0, [R1]
+
+@ inicializa la gestion de la hora
+@
+@	PASAR LOS PARAMETROS A hora_Init SEGUN SE HAYAN DEFINIDO
+@		EN EL PRIMER APARTADO
+@
+    LDR R0, =hora
+	bl	hora_Init
+
+	bl 	Estadisticas
+
+	bl	hora_Off
+
+	SWI	0x11
+
+
+
+
+@ Funcion que lee un numero entre dos valores
+@   Parametros: R0 valor inferior
+@               R1 valor superior
+@   Resultados: R0 numero leido
+Lee_Num:
+	stmdb	SP!, {R4-R7,LR}
+	mov	R4, R0
+	mov	R5, R1
+	mov	R6, #10
+
+Ini_lee:
+ 	mov	R7, #0
+Repi_lee:
+	swi	0x04
+        cmp	R0,#'\r'
+        beq	Comp_lee
+        cmp	R0,#'\n'
+        beq	Comp_lee
+
+        swi	0x00
+        mul	R7, R6, R7
+	sub	R0, R0, #'0'
+	add	R7, R7, R0
+        b	Repi_lee
+Comp_lee:
+	cmp	R7, R4
+	blt	Err_lee
+	cmp	R7, R5
+	bgt	Err_lee
+	b	Fin_lee
+
+Err_lee:
+	ldr	R0,=Err_datos
+	swi 	0x02
+        b	Ini_lee
+
+Fin_lee:
+	mov	R0, R7
+
+	ldmia 	SP!, {R4-R7,PC}
+

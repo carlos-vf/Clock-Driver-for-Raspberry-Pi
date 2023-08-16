@@ -1,0 +1,58 @@
+@ programa de prueba del timer por interrupciones
+@  se muestra por pantalla la secuencia {A,B,C,D,E,F,G}
+@  en la que cada letra se produce dsepues de una interrupcion
+.globl _start
+
+.extern     ST_Intr
+.extern     ST_Off
+
+
+@ Contantes
+.set Periodo, 1000
+
+@ Variables
+.data
+
+caracter:	.byte  0, 0
+.align	2
+
+
+@ Codigo
+.text
+
+_start:
+	ldr	R4, =caracter
+	mov 	R0, #'A'
+	strb 	R0, [R4]
+	SWI 	0x00
+
+	ldr	R0, =Periodo
+	ldr	R1, =Incr_CHR
+	bl	ST_Intr
+
+	ldrb 	R1, [R4]
+
+Repite:
+	ldrb 	R0, [R4]
+	cmp 	R0, #'G'
+	bgt 	Fin_Test
+	cmp 	R0, R1
+	movne 	R1, R0
+	beq 	Repite
+	SWI 	0x00
+	b 	Repite
+
+Fin_Test:
+	bl 	ST_Off
+
+	SWI 0x11
+
+@ Rutina que se jecutara periodicamente en cada interrupcion
+Incr_CHR:
+	ldr	R0, =caracter
+	ldrb    R1, [R0]
+	add	R1, R1, #1
+	strb	R1, [R0]
+
+	mov	PC, LR
+

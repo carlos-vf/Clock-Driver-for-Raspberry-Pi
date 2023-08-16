@@ -1,0 +1,332 @@
+@ Funcion Estadistica
+@ No requiere parametros
+@
+.global     Estadisticas
+
+@ Funciones usadas
+.extern Random
+.extern print_integer
+.extern ST_Init
+.extern ST_Delay
+
+@	            DECLARACION DE CONSTANTES
+.set numEle, 0x8000
+.set bitsEle, 15
+.set Max_value, 0x3F
+.set Retraso, 400
+@
+@		DATOS
+@
+.data
+.align 2
+ArrayFrec: 	.space 	(Max_value+1)*4
+                .word   0xAAAAAAAA
+Suma:           .space  4
+Media:		.space 	4
+Mediana:	.space 	4
+Moda:		.space 	4
+Array: 		.space 	numEle
+
+
+inicio:		.asciz 	"Inicio del programa. \n\r"
+fin:		.asciz 	"Fin del programa. \n\r"
+generacion: 	.asciz 	"Generacion de numeros pseudo-aleatorios. \n\r"
+fin_generar:	.asciz 	"Numeros pseudo-aleatorios generados \n\r"
+frecuencia:	.asciz 	"Se inicia el calculo de la frecuencia \n\r"
+fin_frecuencia: .asciz 	"Frecuencia calculada. \n\r"
+media:          .asciz  "Se inicia el calculo de la media \n\r"
+fin_media: 	.asciz 	"Media calculada. \n\r"
+moda:           .asciz  "Se inicia el calculo de la moda \n\r"
+fin_moda: 	.asciz 	"Moda calculada. \n\r"
+mediana:        .asciz  "Se inicia el calculo de la mediana \n\r"
+fin_mediana: 	.asciz 	"Mediana calculada. \n\r"
+br:		.asciz 	"\n\r"
+Resultados:	.asciz	"\n\rRESULTADOS ESTADISTICOS\n\r"
+res_frecuencia:	.asciz	"Datos de la frecuencia de cada elemento:\n\r"
+str_frec1:	.asciz  " ("
+str_frec2:	.asciz  ")  //  "
+str_frec3:	.asciz  ")\n\r"
+res_media:      .asciz  "Valor medio de los valores: "
+res_suma:       .asciz  "Suma de todos los valores: "
+res_moda:       .asciz  "Valor de la moda: "
+res_mediana:    .asciz  "Valor de la mediana: "
+
+
+@
+@		CODIGO
+@
+.text
+Estadisticas:
+	        STMDB	SP!, {LR}
+
+		LDR     R0, =inicio
+		SWI     0x02
+
+		ldr     R0, =generacion
+		SWI     0x02
+		BL      GENERAR
+		ldr 	R0, =fin_generar
+		SWI 	0x02
+
+		ldr 	R0, =frecuencia
+		SWI 	0x02
+		BL 	FRECUENCIA
+		ldr 	R0, =fin_frecuencia
+		SWI 	0x02
+
+		ldr 	R0, =media
+		SWI 	0x02
+		BL 	MEDIA
+		ldr 	R0, =fin_media
+		SWI 	0x02
+
+		ldr 	R0, =moda
+		SWI 	0x02
+		BL 	MODA
+		ldr 	R0, =fin_moda
+		SWI 	0x02
+
+		ldr 	R0, =mediana
+		SWI 	0x02
+		BL 	MEDIANA
+		ldr 	R0, =fin_mediana
+		SWI 	0x02
+@
+@ Muestra resultados
+@
+		ldr 	R0, =Resultados
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+		ldr 	R0, =res_frecuencia
+		SWI 	0x02
+                BL 	PINTA_FRECUENCIA
+		ldr 	R0, =br
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+		ldr 	R0, =res_media
+		SWI 	0x02
+		ldr     R0,=Media
+	        ldr	R0, [R0]
+	        bl	print_integer
+		ldr 	R0, =br
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+		ldr 	R0, =res_suma
+		SWI 	0x02
+		ldr     R0,=Suma
+	        ldr	R0, [R0]
+	        bl	print_integer
+		ldr 	R0, =br
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+		ldr 	R0, =res_moda
+		SWI 	0x02
+		ldr     R0,=Moda
+	        ldr	R0, [R0]
+	        bl	print_integer
+		ldr 	R0, =br
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+		ldr 	R0, =res_mediana
+		SWI 	0x02
+		ldr     R0,=Mediana
+	        ldr	R0, [R0]
+	        bl	print_integer
+		ldr 	R0, =br
+		SWI 	0x02
+		ldr 	R0, =br
+		SWI 	0x02
+
+	        LDMIA	SP!, {PC}
+
+
+
+@
+@		FUNCIONES AUXILIARES
+@
+GENERAR:
+	STMDB	SP!, {R4-R5, LR}
+	LDR	R5, =numEle
+	LDR	R4, =Array
+
+loop_random:
+	BL 	Random
+	and	R0, R0, #Max_value
+	strb 	R0, [R4], #1
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+	SUBS 	R5, #1
+	BNE 	loop_random
+
+	LDMIA	SP!, {R4-R5, PC}
+
+FRECUENCIA:
+	STMDB	SP!, {R4-R6, LR}
+	ldr	R4, =ArrayFrec
+	ldr	R5, =Max_value
+	mov	R6, #0
+Llena_0:
+        str	R6, [R4], #4
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+        subs	R5, #1
+        bne	Llena_0
+
+	ldr	R4, =ArrayFrec
+	ldr	R5, =Array
+	ldr	R6, =numEle
+
+Calc_frec:
+	ldrb	R3, [R5], #1
+
+	lsl	R3, R3, #2
+	ldr	R0, [R4, R3]
+	add	R0, #1
+	str	R0, [R4, R3]
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+	subs	R6, #1
+	bne	Calc_frec
+
+	LDMIA SP!, {R4-R6, PC}
+
+MEDIA:
+	STMDB	SP!, {R4-R6,LR}
+
+	ldr	R5, =Array
+	ldr	R6, =numEle
+        mov     R4, #0
+Calc_sum:
+	ldrb	R3, [R5], #1
+        add     R4, R4, R3
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+	subs	R6, #1
+	bne	Calc_sum
+
+        ldr     R0, =Suma
+        str     R4, [R0]
+
+        lsr     R4, R4, #bitsEle
+        ldr     R0, =Media
+        str     R4, [R0]
+
+	LDMIA SP!, {R4-R6,PC}
+
+MODA:
+	STMDB	SP!, {R4-R7, LR}
+
+	ldr	R5, =ArrayFrec
+	ldr	R6, =Max_value
+	mov	R7, #0
+Calc_moda:
+	ldr	R2, [R5], #4
+        cmp	R2, R7
+        movgt	R7, R2
+        movgt	R4, R6
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+	subs	R6, #1
+	bne	Calc_moda
+
+	ldr	R1, =Max_value
+	sub	R4, R1, R4
+
+        ldr     R0, =Moda
+        str     R4, [R0]
+
+	LDMIA SP!, {R4-R7, PC}
+
+MEDIANA:
+	STMDB	SP!, {R4-R7, LR}
+
+	ldr	R4, =ArrayFrec
+	ldr	R5, =Max_value
+	ldr	R6, =numEle
+	lsr	R6, R6, #1
+	mov	R7, #0
+Calc_mediana:
+	ldr	R0, [R4], #4
+        add	R7, R7, R0
+	sub	R5, #1
+
+	ldr	R0, =Retraso
+        bl      ST_Delay
+
+	cmp	R7, R6
+	blt	Calc_mediana
+
+	ldr	R2, =Max_value
+	add	R5, #1
+	sub	R4, R2, R5
+
+        ldr     R0, =Mediana
+        str     R4, [R0]
+
+	LDMIA SP!, {R4-R7, PC}
+
+PINTA_FRECUENCIA:
+	STMDB	SP!, {R4, LR}
+
+	ldr	R4, =ArrayFrec
+	ldr	R5, =Max_value
+
+	mov	R6, #0
+	mov	R7, #0
+
+P_valor:
+        cmp	R6, #10
+        bge	nocero1
+
+	mov	R0, #' '
+	SWI	0x00		@ OutChr
+nocero1:
+	mov	R0, R6
+	bl	print_integer
+
+	ldr	R0, =str_frec1
+	SWI	0x02		@ Write STR
+
+	ldr	R0, [R4], #4
+	bl	print_integer
+
+	cmp	R7, #5
+	beq	NewLineFr
+
+	ldr	R0, =str_frec2
+	SWI	0x02		@ Write STR
+	add	R7, R7, #1
+        b	Cont_valor
+NewLineFr:
+	ldr	R0, =str_frec3
+	SWI	0x02		@ Write STR
+	mov	R7, #0
+Cont_valor:
+	add	R6, R6, #1
+	cmp	R6, R5
+	ble	P_valor
+
+	ldr	R0, =br
+	SWI	0x02		@ Write STR
+
+	LDMIA SP!, {R4, PC}

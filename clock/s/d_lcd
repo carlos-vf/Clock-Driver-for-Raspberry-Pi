@@ -1,0 +1,512 @@
+@ Driver para el uso de una panrtalla LCD de 2x16 (2 lineas de 16 caracteres)
+@       con la conexion I2C
+@
+@ Funciones publicas incluidas:
+@       Funcion de inicializacion (LCD_Ini): inicializa la conexion, el Timer
+@                                            y el propio LCD
+@       Funcion de escritura de un caracter (LCD_WChr)
+@
+.global     LCD_Ini
+.global     LCD_WChr
+.global     BK_ON
+.global     BK_OFF
+.global     LCD_Clr
+.global     LCD_SetCursor
+.global     LCD_Shift
+.global     LCD_WString
+
+@ Constantes globales del Driver
+
+@ Direccion del interfaz I2C-LCD en el interfaz I2C
+.equ        Dir_I2CLCD, 0x027
+
+@ Constantes de retrasos necesarios en el LCD
+.equ	Del_Ini1, 4500  	@ Primer retraso en el proceso de inicializacion 4,1 ms
+.equ	Del_Ini2, 110   	@ Segundo retraso en el proceso de inicializacion 100 micro-seg
+.equ	Del_EPuls, 1    	@ Duracion del pulso superior a Enable 230 nano-seg
+.equ	Del_Ope, 100		@ Retraso entre operaciones del LCD 37 micro-seg
+.equ	Del_Clr, 1600	@ Retraso despues de un CLr de al menos 1,5 ms
+.equ    Del_UnTercioSeg, 333333   @ Retraso de un tercio de segundo
+.equ    Del_2Seg, 2000000         @ Retraso de 2 segundos
+.equ    Del_1Seg, 1000000         @ Retraso de 1 segundo.
+
+@ funciones de otros drivers usados
+@ del dirver del I2C
+.extern		I2C_Init
+.extern		I2C_SendByte
+@ del dirver del System Timer
+.extern		ST_Init
+.extern		ST_Delay
+
+.equ    FALSE,		0x00
+.equ	TRUE,		0x01
+
+@ Variables globales del Driver
+.data
+
+.align 2
+POSICION: .byte 0     // Posicion del cursor
+DDRAM: .byte 0        // Posicion del display
+LINEA: .byte 1        // Num de linea [1-2]
+
+@ Funciones
+.text
+
+@ Inicializa el uso del LCD
+@ 	No necesita parametros
+@      Inicializa la conexion I2C
+@      Inicializa el timer
+@      Inicializa el LCD
+@      Borra el LCD
+@
+LCD_Ini:
+	stmdb	SP!, {LR}
+
+@ Inicializa la conexion y timer
+
+	bl  	I2C_Init
+	bl	ST_Init
+
+@ Comienzo de la inicializacion del LCD
+	mov	R0, #0x03
+	mov	R1, #0			@ RS = Control
+	bl	W_LCD_4b
+
+	ldr	R0,=Del_Ini1
+	bl	ST_Delay
+
+	mov	R0, #0x03
+	mov	R1, #0			@ RS = Control
+	bl	W_LCD_4b
+
+	ldr	R0,=Del_Ini2
+	bl	ST_Delay
+
+	mov	R0, #0x03
+	mov	R1, #0			@ RS = Control
+	bl	W_LCD_4b
+
+	ldr	R0,=Del_Ini2
+	bl	ST_Delay
+
+	mov	R0, #0x02       @ configura interfaz de 4 bits
+	mov	R1, #0			@ RS = Control
+	bl	W_LCD_4b
+
+	mov	R0, #0x28		@ configura 2 lineas y caracteres de 5x8 puntos
+	mov	R1, #0			@ RS = Control
+	bl	LCD_W_Byte
+
+ 	mov	R0, #0x0E		@ Display on, Cursor on, Blinking off
+	mov	R1, #0			@ RS = Control
+	bl	LCD_W_Byte
+
+	mov	R0, #0x06		@ Movimiento del cursor se incrementa, no shift
+	mov	R1, #0			@ RS = Control
+	bl	LCD_W_Byte
+
+	mov	R0, #0x01		@ Clear Display
+	mov	R1, #0			@ RS = Control
+	bl	LCD_W_Byte
+
+	ldr	R0, =Del_Clr
+	bl	ST_Delay
+
+Fin_Ini:
+	ldmia 	SP!, {PC}
+
+
+@ Funcion de escritura de un caracter en el LCD
+@ 	Parametros:
+@        R0, Caracer a escribir
+LCD_WChr:
+	stmdb	SP!, {LR}
+
+	mov	R1, #1			@ RS = Datos
+	bl	LCD_W_Byte
+
+Fin_WChr:
+	ldmia 	SP!, {PC}
+
+
+@ Funciones auxiliares de manejo del LCD
+
+@ Escribe 4 bits en el LCD
+@   parametros: R0 los 4 bits a escribir
+@               R1 valor de RS
+@   Como es escritura RW siempre vale 0
+@
+@   En los bits 7-4 van los 4 bits de datos
+@   En el bit 3 va el estado de backligth
+@   En el bit 2 va la senal Enable
+@   En el bit 1 va la senal RW
+@   En el bit 0 va la senal RS
+W_LCD_4b:
+	stmdb	SP!, {R4, LR}
+
+	mov	R4, R0
+	lsl	R4, R4, #4
+	and	R4, R4, #0x0F0   	@ los 4 bits de datos van en los bits 4-7
+	and	R1, R1, #0x01
+	orr	R4, R4, R1       	@ RS va en el bit 0
+	orr	R4, R4, #0x08       	@ BK va en el bit 3
+	orr    	R4, R4, #0x04		@ E va en el bit 2 (valor 1)
+
+	mov	R0, R4
+	ldr	R1, =Dir_I2CLCD
+    	bl 	I2C_SendByte
+
+	ldr	R0,=Del_EPuls
+	bl	ST_Delay
+
+	bic   	R4, R4, #04	 		@ E va en el bit 2 (valor 0)
+   	mov	R0, R4
+   	ldr  	R1, =Dir_I2CLCD
+   	bl  	I2C_SendByte
+
+	ldr	R0,=Del_EPuls
+	bl	ST_Delay
+
+	ldmia 	SP!, {R4, PC}
+
+@ Escribe un byte en el interfaz
+@   parametros: R0 el byte a escribir
+@               R1 valor de RS
+@
+LCD_W_Byte:
+	stmdb	SP!, {R4-R5, LR}
+	mov 	R4, R0
+	mov		R5, R1
+
+@ primero se enscriben los 4 bits mas signiticativos
+	and		R0, R0, #0x0F0
+	lsr		R0, R0, #4
+	bl		W_LCD_4b
+
+@ luego los menos significativos
+	and		R0, R4, #0x0F
+	mov		R1, R5
+	bl		W_LCD_4b
+
+	ldr		R0,=Del_Ope
+	bl		ST_Delay
+
+	ldmia 	SP!, {R4-R5, PC}
+
+
+
+
+
+@ LCD_Clr()
+@ Borro el LCD y muevo el cursor al inicio.
+
+LCD_Clr:
+
+	STMDB SP!, {LR}
+
+	// Borra la panrtalla
+	MOV R0, #0x01	// Activo bit 1 (clear)
+	MOV R1, #0	// Valor de RS = 0
+	BL LCD_W_Byte
+
+	// Tiempo de espera
+	LDR R0, =Del_Clr
+	BL ST_Delay
+
+	// Cursor al inicio
+	MOV R0, #0x02	// Activo bit 2 (retorno el cursos al inicio)
+	MOV R1, #0	// Valor de RS = 0
+	BL LCD_W_Byte
+
+	// Tiempo de espera
+	LDR R0, =Del_Clr
+	BL ST_Delay
+
+	// Set POSICION a 1
+	LDR R0, =POSICION
+	MOV R1, #1
+	STRB R1, [R0]
+
+	LDMIA SP!, {PC}
+
+
+
+
+@ LCD_SetCursor(linea,posicion)
+@ linea: 1 o 2
+@ posicion: 1 - 40
+@ si los datos introducidos son incorrectos --> no hace nada
+
+LCD_SetCursor:
+
+	STMDB SP!, {R4,LR}
+
+	// Comprobacion de la linea
+	CMP R0, #1
+	BNE LINEA2
+		MOV R4, #0x00	// Si es la linea 1 --> offset a la linea 1
+		B FIN_COMPROB_LINEA
+
+	LINEA2:
+	CMP R0, #2
+	BNE FIN_SC		// Si no es ni la 1 ni la 2, salto a FIN
+		MOV R4, # 0x40	// Si es la linea 2 --> offset a la linea 2
+
+	FIN_COMPROB_LINEA:
+
+
+	// Comprobacion de la posicion
+	CMP R1, #1	// Si es menor que 1, salta a fin
+	BLT FIN_SC
+
+	CMP R1, #40	// Si es mayor de 40, salta a fin
+	BGT FIN_SC
+
+	SUB R1, R1, #1  // ahora posicion [0 - 39]
+
+
+	// Desplazamiento
+	ADD R4, R4, R1 	     // desplazamiento = desplazamiento a linea + desplazamiento a posicion
+
+
+	// Modificamos la memoria DDRAM y movemos el cursor
+	ORR R0, R4, #128	// Bit 7: activa modificacion de la DDRAM
+				// R4: desplazamientos hasta la posicion deseada
+	MOV R1, #0		// Valor de RS = 0
+	BL LCD_W_Byte
+
+
+	// Tiempo de espera
+	LDR R0, =Del_Ope
+	BL ST_Delay
+
+
+	FIN_SC:
+
+	LDMIA SP!, {R4, PC}
+
+
+
+
+@ LCD_Shift(sentido)
+@ sentido: 0 -> derecha. 1 -> izquierda
+
+LCD_Shift:
+
+	STMDB SP!, {R4-R5, LR}
+
+	// Variable de posicion
+	LDR R4, =POSICION
+	LDRB R5, [R4]
+
+
+	// Comprobacion de parametro
+	CMP R0, #0		// Si es 0 shift hacia la derecha
+	BNE IZQUIERDA
+		CMP R5, #24	// Si ya estoy a la derecha acabo
+		BEQ FIN_S
+		SUB R5, R5, #1	// Actualizo la variable de posicion
+		B DESPLAZAMIENTO
+
+	IZQUIERDA:
+	CMP R0, #1		// Si es 1 shift hacia la izquierda
+	BNE FIN_S
+		CMP R5, #0	// Si ya estoy a la izquierda acabo
+		BEQ FIN_S
+		ADD R5, R5, #1	// Actualizo la variable de posicion
+
+
+	// Desplazamiento de pantalla
+	DESPLAZAMIENTO:
+	STRB R5, [R4]		// Guardo la variable de posicion
+	LSL R0, R0, #2
+	ORR R0, R0, #24		// Bit 4: Activacion de comando de desplazamiento
+				// Bit 3: Shift screen
+				// Bit 2: R0 (0 = derecha. 1 = izquierda)
+	MOV R1, #0
+	BL LCD_W_Byte
+
+
+	// Tiempo de espera
+	LDR R0, =Del_Ope
+	BL ST_Delay
+
+	FIN_S:
+
+	LDMIA SP!, {R4-R5, PC}
+
+
+
+
+
+@LCD_WString(string)
+
+LCD_WString:
+
+        STMDB SP!, {R4-R10, LR}
+
+        // R4 = @string
+        // R5 = char
+        // R6 = @POSICION
+        // R7 = @DDRAM
+        // R8 = POSICION
+        // R9 = DDRAM
+
+
+        // Set POSICION a 1
+        LDR R6, =POSICION
+        MOV R5, #1
+        STRB R5, [R6]
+
+        // Set DDRAM a 0
+        LDR R7, =DDRAM
+        MOV R5, #0
+        STRB R5, [R7]
+
+        // Set LINEA a 1
+        LDR R10, =LINEA
+        MOV R5, #1
+        STRB R5, [R10]
+
+
+        // Imprimo caracteres
+        MOV R4, R0     // @string
+
+        WHILE_WS:
+             LDRB R5, [R4]   // cojo char
+
+             CMP R5, #0x0        // si es el compradaor nulo, termino
+             BEQ FIN_WS
+
+             CMP R5, #0X0D        // si es fin de linea, salto a FIN_DE_LINEA
+             BNE CONTINUO
+                 BL FIN_DE_LINEA
+
+             CONTINUO:
+             CMP R5, #0x08       // si es char de borrado, salto a BORRADO
+             BEQ BORRADO
+
+
+             CHAR_NORMAL:
+             // Si el char no entra en la parte visible, se desplaza el display
+             LDRB R8, [R6]
+             LDRB R9, [R7]
+             SUB R10, R8, R9   // Posicion - DDRAM
+             CMP R10, #16
+             BLT FINIF_WS
+                  MOV R0, #0
+                  BL LCD_Shift  // Shift hacia la derecha
+                  ADD R9, R9, #1 // DDRAM++
+                  STRB R9, [R7]
+
+             FINIF_WS:
+             MOV R0, R5
+             BL LCD_WChr      // LCD_WChr(char)
+             ADD R8, R8, #1   // Posicion++
+             STRB R8, [R6]
+
+             // Compruebo si he acabado la linea y avanzo el cursor
+             CMP R8, #40
+             BLE CONTINUO2
+                 BL FIN_DE_LINEA
+
+             CONTINUO2:
+             LDR R0,=LINEA
+             LDRB R0, [R0]
+             LDRB R1, [R6]
+             BL LCD_SetCursor  // LCD_SetCursor(LINEA, POSICION)
+
+
+             // Avanzo el string
+             ADD R4, R4, #1  // char++
+
+
+             // Tiempo de espera
+             LDR R0, =Del_UnTercioSeg
+             BL ST_Delay
+
+
+             B WHILE_WS
+
+
+
+             BORRADO:
+             LDR R1, [R6]
+             SUB R1, R1, #2
+             STRB R1, [R6]
+             LDR R0, =LINEA
+             LDRB R0, [R0]
+             BL LCD_SetCursor
+             B CHAR_NORMAL
+
+        FIN_WS:
+
+        LDMIA SP, {R4-R10, PC}
+
+
+
+
+
+@ FIN_DE_LINEA()
+@ Si esta en la primera linea, salta a la segunda
+@ Si esta en la segunda linea, limpia y vuelve a la primera
+
+FIN_DE_LINEA:
+
+        STMDB SP!, {R4-R7, LR}
+
+        LDR R4, =LINEA
+        LDRB R5, [R4]
+
+
+        // Si hay que saltar a la linea 2
+        CMP R5, #1
+        BNE ELSE_FDL
+
+            MOV R6, #2
+            STRB R6, [R4]   // LINEA = 2
+
+            LDR R6, =DDRAM
+            LDRB R6, [R6]
+
+            // Tiempo de espera
+            LDR R0, =Del_1Seg
+            BL ST_Delay
+
+            WHILE_FDL:
+                CMP R6, #1
+                BEQ FINWHILE_FDL
+                MOV R0, #1
+                BL LCD_Shift   // Shift hacia la izquierda
+                SUB R6, R6, #1 // DDRAM--
+                B WHILE_FDL
+
+
+        // Si hay que saltar a la linea 1
+        ELSE_FDL:
+
+           // Tiempo de espera
+           LDR R0, =Del_2Seg
+           BL ST_Delay
+
+           BL LCD_Clr
+           MOV R6, #1
+           STRB R6, [R4]   // LINEA = 1
+
+
+        FINWHILE_FDL:
+
+        MOV R6, #0
+        LDR R7, =DDRAM
+        STRB R6, [R7]   // DDRAM = 0
+
+        MOV R6, #1
+        LDR R7, =POSICION
+        STRB R6, [R7]   // POSICION = 1
+
+        LDMIA SP!, {R4-R7, PC}
+
+
+
+
+

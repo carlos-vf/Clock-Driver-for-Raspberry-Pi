@@ -1,0 +1,173 @@
+@ Driver del System Timer gestionado por interrupciones
+@ Funciones:
+@	ST_Intr: Inicia el System Timer para que ejecute una tarea
+@                    de forma periodica
+@	ST_RTI: Rutina de atencion que ejecuta la tarea de forma periodica
+@	ST_Off: Detinene la ejecucion de la tarea
+@
+.globl ST_Intr
+.globl ST_RTI
+.globl ST_Off
+
+@Constantes del System Timer
+.equ SysTimer, 0x20003000
+.equ ST_CS,  0x000
+.equ ST_CLO, 0x004
+.equ ST_CHI, 0x008
+.equ ST_C0,  0x00C
+.equ ST_C1,  0x010
+.equ ST_C2,  0x014
+.equ ST_C3,  0x018
+
+@ Constantes del Controlador de Interrupciones
+.set CI_base, 0x2000B200
+.set CI_BascP, 0x00
+.set CI_IRQ1P, 0x04
+.set CI_IRQ2P, 0x08
+.set CI_BascE, 0x18
+.set CI_IRQ1E, 0x10
+.set CI_IRQ2E, 0x14
+.set CI_BascD, 0x24
+.set CI_IRQ1D, 0x1C
+.set CI_IRQ2D, 0x20
+
+.equ    FALSE,		0x00
+.equ	TRUE,		0x01
+
+
+@ varibles del driver
+.data
+.align 2
+Log_dir_ST:	.word  FALSE
+Log_dir_CI:	.word  FALSE
+TAREA:          .space 4
+DELAY:          .space 4
+
+
+.Text
+
+@ Rutina de inicializacion
+@ Param: tiempo en ms y direccion de la rutina
+ST_Intr:
+
+  STMDB SP!, {R4-R10, LR}
+
+  LDR R5, =DELAY
+  STR R0, [R5]      // Guardo el tiempo en una variable global
+  MOV R10, R0
+  LDR R5, =TAREA
+  STR R1, [R5]      // Guardo la tarea en una variable global
+
+
+  // Se inicia la gestion de las interrupciones
+  MOV R0, #3
+  LDR R1, =ST_RTI
+  MOV R2, #0
+  MOV R3, #0
+  MOV R4, #0
+  SWI 0x4B      // OS_ClaimDeviceVector
+
+
+  // Direccion logica del CI
+  MOV R0, #13
+  LDR R1, =CI_base
+  MOV R2, #0x100
+  SWI 0x68
+  LDR R6, =Log_dir_CI
+  STR R3, [R6]
+
+  // Direccion logica del ST
+  MOV R0, #13
+  LDR R1, =SysTimer
+  MOV R2, #0x100
+  SWI 0x68
+  LDR R6, =Log_dir_ST
+  STR R3, [R6]
+
+
+  // Elimino interrupciones anteriores en el timer
+  LDR R6, =Log_dir_ST
+  LDR R6, [R6]
+  MOV R7, #8          // bit 3 a valor 1
+  SWI 0x16
+  STR R7, [R6, #ST_CS]
+  SWI 0x7C
+
+  // Habilito las interrupciones de la linea 3
+  LDR R8, =Log_dir_CI
+  LDR R8, [R8]
+  SWI 0x16
+  STR R7, [R8, #CI_IRQ1E]
+  SWI 0x7C
+
+
+  // Programo el timer
+  SWI 0x16
+  LDR R8, [R6, #ST_CLO]
+  LDR R5,=DELAY
+  MOV R4, #1000
+  MUL R10, R4, R10
+  STR R10, [R5]
+  ADD R8, R8, R10
+  STR R8, [R6, #ST_C3]
+  SWI 0x7C
+
+  LDMIA SP!, {R4-R10, PC}
+
+
+@ Rutina de atencion
+@
+ST_RTI:
+
+  STMDB SP!, {R4-R7, LR}
+
+  // Elimino la peticion de interrupcion
+  LDR R4, =Log_dir_ST
+  LDR R4, [R4]
+  MOV R5, #8           // bit 3 a valor 1
+  STR R5, [R4, #ST_CS]
+
+  // Se ejecuta la tarea
+  LDR R7,=TAREA
+  LDR R7, [R7]
+  LDR LR, =Ret_Addr
+  MOV PC, R7
+
+  Ret_Addr:
+  // Vuelvo a programar el timer
+  LDR R4, =Log_dir_ST
+  LDR R4, [R4]
+  LDR R5, [R4, #ST_CLO]
+  LDR R6, =DELAY
+  LDR R6, [R6]
+  ADD R5, R5, R6
+  STR R5, [R4, #ST_C3]
+
+  LDMIA SP!, {R4-R7, PC}
+
+
+@ Rutina que desactiva la gestion de las interrupciones
+@
+ST_Off:
+	stmdb 	SP!, {R4, LR}
+
+@ se detine la gestion de las interrupciones
+	mov 	R0, #3
+	ldr 	R1, =ST_RTI
+	mov 	R2, #0
+	mov 	R3, #0
+	mov 	R4, #0
+	SWI 	0x4C		@ OS_ReleaseDeviceVector
+
+@ se enmascara la interrupcion en el Controlador de Interrupciones
+
+	ldr 	R0, =Log_dir_CI
+	ldr 	R0, [R0]
+	mov 	R1, #0x08
+	SWI 	0x16
+	str 	R1, [R0, #CI_IRQ1D]
+	SWI 	0x7C
+
+	ldmia	SP!, {R4, PC}
+
+

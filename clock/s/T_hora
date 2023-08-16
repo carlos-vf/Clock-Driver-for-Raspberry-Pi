@@ -1,0 +1,40 @@
+// Test de fecha y hora
+
+.extern hora_Init
+.extern LCD_Clr
+.extern hora_Incr
+
+.equ Del, 1000000
+
+.data
+
+HORA: .byte 23
+MINUTO: .byte 59
+SEGUNDO: .byte 50
+DIA: .byte 30
+MES: .byte 12
+.align 2
+ANO: .word 2020
+
+.globl _start
+.text
+_start:
+
+LDR R0, =HORA
+BL hora_Init
+
+BL LCD_Clr
+
+MOV R4, #1
+WHILE:
+    CMP R4, #0
+    BEQ FINWHILE
+    ADD R4, R4, #1
+    BL hora_Incr
+    LDR R0, =Del
+    BL ST_Delay
+    B WHILE
+
+FINWHILE:
+
+SWI 0x11

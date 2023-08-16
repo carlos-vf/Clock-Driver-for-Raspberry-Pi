@@ -1,0 +1,323 @@
+@ Modulo de gestion de hora y fecha
+@
+@ Funciones publicas:
+@     - hora_Init: inicializa el modulo determiando la hora inicial y la
+@         gestion de la hora usando el System timer. Recibe como parametros
+@         la hora inicial.
+@     - hora_Incr: incrementa en un segundo la hora actual y lo muestra
+@         en el LCD. No recibe parametros ni devuelve resultados.
+@     - hora_Off: detiene el proceso de mostrar la hora.
+@
+.global		hora_Init
+.global		hora_Incr
+.global		hora_Off
+
+.extern LCD_Ini
+.extern LCD_SetCursor
+.extern Div_10
+.extern ST_Intr
+.extern ST_Off
+
+.equ OFFHORA, 0
+.equ OFFMINUTO, 1
+.equ OFFSEGUNDO, 2
+.equ OFFDIA, 3
+.equ OFFMES, 4
+.equ OFFANO, 8
+.equ PERIODO, 1000
+
+@  Variables del modulo
+.data
+
+.align 2
+HORA: .space 1
+MINUTO: .space 1
+SEGUNDO: .space 1
+DIA: .space 1
+MES: .space 1
+.align 2
+ANO: .space 4
+
+
+
+
+@ Funciones
+.text
+
+@ Funcion que inicializa el LCD, el System Timer, la fecha y la hora.
+@ Recibe la direccion del vector con la fecha y hora como parametro.
+hora_Init:
+
+     STMDB SP!, {R4-R6, LR}
+
+     MOV R4, R0          // R4 = @vector
+     LDR R6, =HORA       // R6 = @HORA
+
+     // Inicializo el LCD
+     BL LCD_Ini
+
+     // Inicializo la fecha y hora
+     LDRB R5, [R4, #OFFHORA]
+     STRB R5, [R6, #OFFHORA]
+
+     LDRB R5, [R4, #OFFMINUTO]
+     STRB R5, [R6, #OFFMINUTO]
+
+     LDRB R5, [R4, #OFFSEGUNDO]
+     STRB R5, [R6, #OFFSEGUNDO]
+
+     LDRB R5, [R4, #OFFDIA]
+     STRB R5, [R6, #OFFDIA]
+
+     LDRB R5, [R4, #OFFMES]
+     STRB R5, [R6, #OFFMES]
+
+     LDR R5, [R4, #OFFANO]
+     STR R5, [R6, #OFFANO]
+
+     LDR R0,=PERIODO
+     LDR R1,=hora_Incr
+     BL ST_Intr
+
+     LDMIA SP!, {R4-R6, PC}
+
+
+
+@ Funcion que actualiza y muestra la hora cada segundo
+@
+hora_Incr:
+
+  STMDB SP!, {R4-R10, LR}
+
+  LDR R4, =HORA                  // R4 = @HORA
+
+  // Incremento 1 segundo
+  LDRB R5, [R4, #OFFSEGUNDO]     // R5 = SEGUNDO
+  ADD R5, R5, #1                 // SEGUNDO++
+  CMP R5, #60
+  BNE GUARDA_SEG
+
+      MOV R5, #0                 // SEGUNDO = 0
+      LDRB R6, [R4, #OFFMINUTO]
+      ADD R6, R6, #1             // MINUTO++
+      CMP R6, #60
+      BNE GUARDA_MIN
+
+          MOV R6, #0                // MINUTO = 0
+          LDRB R7, [R4, #OFFHORA]
+          ADD R7, R7, #1            // HORA++
+          CMP R7, #24
+          BNE GUARDA_HORA
+
+              MOV R7, #0               // HORA = 0
+              LDRB R8, [R4, #OFFDIA]
+              ADD R8, R8, #1           // DIA++
+              CMP R8, #31
+              BNE GUARDA_DIA
+
+                  MOV R8, #1               // DIA = 1
+                  LDRB R9, [R4, #OFFMES]
+                  ADD R9, R9, #1           // MES++
+                  CMP R9, #13
+                  BNE GUARDA_MES
+
+                      MOV R9, #1               // MES = 1
+                      LDR R10, [R4, #OFFANO]
+                      ADD R10, R10, #1         // ANO++
+                      B GUARDA_ANO
+
+  // Guardo las variables globales
+  GUARDA_ANO:
+  STR R10, [R4, #OFFANO]
+
+  GUARDA_MES:
+  STRB R9, [R4, #OFFMES]
+
+  GUARDA_DIA:
+  STRB R8, [R4, #OFFDIA]
+
+  GUARDA_HORA:
+  STRB R7, [R4, #OFFHORA]
+
+  GUARDA_MIN:
+  STRB R6, [R4, #OFFMINUTO]
+
+  GUARDA_SEG:
+  STRB R5, [R4, #OFFSEGUNDO]
+
+
+  // Muestro HORA
+  LDRB R0, [R4, #OFFHORA]
+  BL Div_10
+  ADD R5, R0, #48    // Primer digito en ASCII
+  ADD R6, R1, #48    // Segundo digito en ASCII
+
+  MOV R0, #1
+  MOV R1, #5
+  BL LCD_SetCursor   // Cursor en (1,5)
+  MOV R0, R5
+  BL LCD_WChr
+
+  MOV R0, #1
+  MOV R1, #6
+  BL LCD_SetCursor   // Cursor en (1,6)
+  MOV R0, R6
+  BL LCD_WChr
+
+
+  // Muestro ':'
+  MOV R0, #1
+  MOV R1, #7
+  BL LCD_SetCursor   // Cursor en (1,7)
+  MOV R0, #58        // ':' = 58
+  BL LCD_WChr
+
+
+  // Muestro MINUTO
+  LDRB R0, [R4, #OFFMINUTO]
+  BL Div_10
+  ADD R5, R0, #48    // Primer digito en ASCII
+  ADD R6, R1, #48    // Segundo digito en ASCII
+
+  MOV R0, #1
+  MOV R1, #8
+  BL LCD_SetCursor   // Cursor en (1,8)
+  MOV R0, R5
+  BL LCD_WChr
+
+  MOV R0, #1
+  MOV R1, #9
+  BL LCD_SetCursor   // Cursor en (1,9)
+  MOV R0, R6
+  BL LCD_WChr
+
+
+  // Muestro ':'
+  MOV R0, #1
+  MOV R1, #10
+  BL LCD_SetCursor   // Cursor en (1,10)
+  MOV R0, #58        // ':' = 58
+  BL LCD_WChr
+
+
+  // Muestro SEGUNDO
+  LDRB R0, [R4, #OFFSEGUNDO]
+  BL Div_10
+  ADD R5, R0, #48    // Primer digito en ASCII
+  ADD R6, R1, #48    // Segundo digito en ASCII
+
+  MOV R0, #1
+  MOV R1, #11
+  BL LCD_SetCursor   // Cursor en (1,11)
+  MOV R0, R5
+  BL LCD_WChr
+
+  MOV R0, #1
+  MOV R1, #12
+  BL LCD_SetCursor   // Cursor en (1,12)
+  MOV R0, R6
+  BL LCD_WChr
+
+
+  // Muestro DIA
+  LDRB R0, [R4, #OFFDIA]
+  BL Div_10
+  ADD R5, R0, #48    // Primer digito en ASCII
+  ADD R6, R1, #48    // Segundo digito en ASCII
+
+  MOV R0, #2
+  MOV R1, #4
+  BL LCD_SetCursor   // Cursor en (2,4)
+  MOV R0, R5
+  BL LCD_WChr
+
+  MOV R0, #2
+  MOV R1, #5
+  BL LCD_SetCursor   // Cursor en (2,5)
+  MOV R0, R6
+  BL LCD_WChr
+
+
+  // Muestro '/'
+  MOV R0, #2
+  MOV R1, #6
+  BL LCD_SetCursor   // Cursor en (2,6)
+  MOV R0, #47        // '/' = 47
+  BL LCD_WChr
+
+
+  // Muestro MES
+  LDRB R0, [R4, #OFFMES]
+  BL Div_10
+  ADD R5, R0, #48    // Primer digito en ASCII
+  ADD R6, R1, #48    // Segundo digito en ASCII
+
+  MOV R0, #2
+  MOV R1, #7
+  BL LCD_SetCursor   // Cursor en (2,7)
+  MOV R0, R5
+  BL LCD_WChr
+
+  MOV R0, #2
+  MOV R1, #8
+  BL LCD_SetCursor   // Cursor en (2,8)
+  MOV R0, R6
+  BL LCD_WChr
+
+
+  // Muestro '/'
+  MOV R0, #2
+  MOV R1, #9
+  BL LCD_SetCursor   // Cursor en (2,9)
+  MOV R0, #47        // '/' = 47
+  BL LCD_WChr
+
+
+  // Muestro ANO
+  LDR R0, [R4, #OFFANO]
+  BL Div_10
+  ADD R5, R1, #48     // Cuarto digito
+  BL Div_10
+  ADD R6, R1, #48     // Tercer digito
+  BL Div_10
+  ADD R7, R1, #48     // Segundo digito
+  ADD R8, R0, #48     // Primer digito
+
+  MOV R0, #2
+  MOV R1, #10
+  BL LCD_SetCursor   // Cursor en (2,10)
+  MOV R0, R8
+  BL LCD_WChr
+
+  MOV R0, #2
+  MOV R1, #11
+  BL LCD_SetCursor   // Cursor en (2,11)
+  MOV R0, R7
+  BL LCD_WChr
+
+  MOV R0, #2
+  MOV R1, #12
+  BL LCD_SetCursor   // Cursor en (2,12)
+  MOV R0, R6
+  BL LCD_WChr
+
+  MOV R0, #2
+  MOV R1, #13
+  BL LCD_SetCursor   // Cursor en (2,13)
+  MOV R0, R5
+  BL LCD_WChr
+
+
+  LDMIA SP!, {R4-R10, PC}
+
+
+@ Funcion que detiene el proceso de mostrar la hora.
+@
+hora_Off:
+	stmdb	SP!, {LR}
+
+	bl	ST_Off
+
+	ldmia 	SP!, {PC}
+
+
